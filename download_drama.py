@@ -73,6 +73,39 @@ def extract_m3u8(html: str) -> str | None:
     return m.group(0) if m else None
 
 
+def extract_build_id(html: str) -> str:
+    """从页面 HTML 中动态提取 Next.js buildId（站点更新后旧值会失效）"""
+    m = re.search(r'"buildId"\s*:\s*"([^"]+)"', html)
+    if not m:
+        raise SystemExit("❌ 无法从页面提取 buildId，reelshort 页面结构可能已变化")
+    return m.group(1)
+
+
+def parse_next_data_from_html(html: str) -> dict:
+    """兜底：直接从页面 HTML 的 __NEXT_DATA__ JSON 里解析 pageProps.data
+
+    data API 的 buildId 失效时走这条路；不同渲染路径下数据可能嵌在
+    pageProps.data 或 pageProps.initialState.data，两处都尝试。
+    """
+    import json
+    m = re.search(r'<script id="__NEXT_DATA__" type="application/json"[^>]*>(.*?)</script>', html, re.S)
+    if not m:
+        raise SystemExit("❌ 无法获取剧集列表（data API 与 __NEXT_DATA__ 均失败）")
+    try:
+        data = json.loads(m.group(1))
+    except json.JSONDecodeError:
+        raise SystemExit("❌ __NEXT_DATA__ JSON 解析失败")
+    page_props = data.get("pageProps", {})
+    # 常见嵌套位置逐一尝试
+    for path in [("data",), ("initialState", "data"), ("initialState", "movie")]:
+        node = page_props
+        for key in path:
+            node = node.get(key, {}) if isinstance(node, dict) else {}
+        if isinstance(node, dict) and node.get("online_base"):
+            return node
+    return {}
+
+
 def fetch_episodes(url: str, start: int, end: int, is_default_range: bool):
     """获取剧集列表，返回 (platform, drama_name, episodes, cover_url)"""
     platform = detect_platform(url)
@@ -101,14 +134,17 @@ def fetch_episodes(url: str, start: int, end: int, is_default_range: bool):
             raise SystemExit("❌ 页面中未找到 m3u8，reelshort 页面结构可能已变化")
 
         # 2. 通过 data API 拿全剧集列表（同样忽略 403 状态码取 body）
-        api_url = f"https://www.reelshort.com/_next/data/1792653904033/en/movie/{slug}.json?slug={slug}"
+        # buildId 动态提取：站点更新会导致 buildId 失效，所以从刚抓到的页面 HTML 里现取
+        build_id = extract_build_id(html)
+        api_url = f"https://www.reelshort.com/_next/data/{build_id}/en/movie/{slug}.json?slug={slug}"
         r = cffi_requests.get(api_url, impersonate="chrome", timeout=30)
         try:
             movie = r.json().get("pageProps", {}).get("data", {})
         except Exception:
             movie = {}
+        # buildId 失效的兜底：直接从页面 HTML 里的 __NEXT_DATA__ 解析剧集列表
         if not movie.get("online_base"):
-            raise SystemExit("❌ 无法获取剧集列表（data API 失败）")
+            movie = parse_next_data_from_html(html)
 
         drama_name = movie.get("book_title") or slug
         cover_url = movie.get("book_pic")

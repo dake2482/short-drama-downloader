@@ -23,11 +23,10 @@ metadata:
 
 ## 核心资产
 
-- 工具仓库：`/Users/dake/Documents/WorkBuddy/漫剧/short_drama_downloader/`
-- Python venv：`<仓库>/.venv/`（Python 3.13，含 PyQt5、yt-dlp、requests、aiohttp、curl_cffi）
-- 主脚本：`<仓库>/download_drama.py`（无 GUI 命令行版，AI 代下载入口）
-- 默认输出：`<仓库>/downloads/<剧名>/Episode NN.mp4` + `cover.jpg`
-- GUI 版（可选，给人类用）：双击 `<仓库>/启动.command`
+- 本 skill 仓库：`<SKILL_DIR>`（即本仓库 clone 目录，含 `download_drama.py`、`src/`、`scripts/`）
+- Python venv：`<SKILL_DIR>/.venv/`（由 `scripts/download.sh` 首次运行时自动创建，Python 3.9+）
+- 主脚本：`<SKILL_DIR>/download_drama.py`（无 GUI 命令行版，AI 代下载入口）
+- 默认输出：`<输出目录>/<剧名>/Episode NN.mp4` + `cover.jpg`
 
 ## 平台支持与状态（2026-10-27 实测）
 
@@ -38,10 +37,17 @@ metadata:
 
 ## 标准操作流程
 
+### 第 0 步：一键脚本（推荐，自动装依赖）
+
+```bash
+cd <SKILL_DIR>
+./scripts/download.sh "<URL>" <输出目录> [起始集] [结束集]
+```
+
 ### 第 1 步：解析剧集信息（不下载）
 
 ```bash
-cd /Users/dake/Documents/WorkBuddy/漫剧/short_drama_downloader
+cd <SKILL_DIR>
 .venv/bin/python download_drama.py "<URL>" --info
 ```
 
@@ -75,7 +81,7 @@ cd /Users/dake/Documents/WorkBuddy/漫剧/short_drama_downloader
 - **解法**：`curl_cffi` 的 `requests.get(url, impersonate="chrome")` 模拟 Chrome TLS 指纹
 - **关键发现**：WAF 可能返回 403 状态码但 body 完整（含 m3u8、__NEXT_DATA__）——**只看 body 内容长度，忽略状态码**
 - m3u8 直链格式：`https://v-mps.crazymaplestudios.com/vod-xxx/.../...-sd.m3u8`，直接喂给 yt-dlp 即可
-- 剧集列表：`https://www.reelshort.com/_next/data/1792653904033/en/movie/<slug>.json?slug=<slug>`（buildId 可能会变，若失效从任意剧集页 HTML 正则提取 `"buildId":"xxx"`）
+- 剧集列表：`https://www.reelshort.com/_next/data/<buildId>/en/movie/<slug>.json?slug=<slug>`。**buildId 已改为每次运行时从剧集页 HTML 动态提取**（正则 `"buildId":"xxx"`），无需手工维护；若 data API 失败还会自动兜底解析页面 `__NEXT_DATA__`
 
 ### 2. 沙箱安全钩子拦截批量下载
 - **现象**：批量下载 50 集时，进程在 workspace 内产生大量 `.part` 临时文件又删除，触发沙箱 safe-delete 钩子（阈值约 50 个文件操作），进程被静默杀掉（无报错无 traceback，退出码 1）
