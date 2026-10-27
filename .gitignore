@@ -1,0 +1,9 @@
+# 临时文件与运行产物
+*.part
+*.ytdl
+*.log
+.venv/
+__pycache__/
+*.pyc
+downloads/
+.DS_Store

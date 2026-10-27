@@ -1,0 +1,6 @@
+# 运行时依赖（Python 3.9+）
+# PyQt5 仅原版 GUI 需要，本命令行 skill 不依赖
+yt-dlp>=2025.11.12
+requests>=2.31.0
+aiohttp>=3.9.1
+curl_cffi>=0.7
